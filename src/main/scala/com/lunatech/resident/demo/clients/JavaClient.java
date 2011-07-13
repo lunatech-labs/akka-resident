@@ -1,6 +1,6 @@
-package com.lunatech.resident.clients;
+package com.lunatech.resident.demo.clients;
 
-import com.lunatech.resident.server.SendChannelMessage;
+import com.lunatech.resident.messages.SendChannelMessage;
 
 import akka.actor.ActorRef;
 import static akka.actor.Actors.*;

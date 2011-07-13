@@ -2,44 +2,36 @@ package com.lunatech.resident.server
 
 import akka.actor.Actor
 import akka.actor.ActorRef
-import scala.util.matching.Regex
+import akka.remoteinterface._
+import com.lunatech.resident.messages._
+import com.lunatech.resident.server._
+import java.net.InetSocketAddress
+import akka.event.EventHandler
 
-case class Signup(filter : MessageFilters.MessageFilter)
+case class Disconnected(address : InetSocketAddress)
 
 class CentralHub(val residentActor : ActorRef) extends Actor {
+  
   residentActor ! AddListener(self)
   
-  var recipients : List[(ActorRef, MessageFilters.MessageFilter)] = Nil
+  var recipients : List[(ActorRef, InetSocketAddress, MessageFilters.MessageFilter)] = Nil
   
   def receive = {
-    case msg : ReceivedMessage => recipients.filter(_._2.matches(msg)).removeDuplicates.foreach(_._1 ! msg) 
+    case msg : ReceivedMessage => {
+      recipients.filter(_._3.matches(msg)).removeDuplicates.foreach(rec => {
+        EventHandler.debug(this, "Sending message to actor " + rec._1)
+        rec._1 ! rec._3.build(msg)
+      }) 
+    }
     case msg : SendMessage => residentActor ! msg
-    case Signup(filter) => self.sender.foreach(recipient => { recipients = (recipient, filter) :: recipients})
+    case Signup(filter) => {
+      EventHandler.debug(this, "Received messagefilter " + filter)
+      self.sender.foreach(recipient => { recipients = (recipient, self.sender.get.getHomeAddress, filter) :: recipients})
+    }
+    case Disconnected(address : InetSocketAddress) => {
+      recipients = recipients.filterNot(arg => arg._2 == address)
+    }
+    case otherMsg => EventHandler.debug(this, "Received other message type : " + otherMsg)
   }
 }
 
-object MessageFilters {
-  trait MessageFilter {
-    def matches(msg : ReceivedMessage) : Boolean
-  }
-
-  case class All extends MessageFilter { 
-    override def matches(msg : ReceivedMessage) = true
-  }
-  
-  case class MessageLiteral(literal : String) extends MessageFilter {
-    def matches(msg : ReceivedMessage) = literal.equals(msg.message)
-  }
-  
-  case class MessageStartsWith(prefix : String) extends MessageFilter {
-    def matches(msg : ReceivedMessage) = msg.message startsWith prefix
-  }
-  
-  case class MessageContains(literal : String) extends MessageFilter {
-    def matches(msg : ReceivedMessage) = msg.message contains literal  
-  }
-  
-  case class MessageMatches(regex : Regex) extends MessageFilter {
-    def matches(msg : ReceivedMessage) = regex.pattern.matcher(msg.message).matches
-  }
-}
